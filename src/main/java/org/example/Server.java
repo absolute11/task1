@@ -1,5 +1,7 @@
 package org.example;
 
+import org.apache.http.NameValuePair;
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -43,11 +45,14 @@ public class Server {
             final var parts = requestLine.split(" ");
 
             if (parts.length != 3) {
-                // just close socket
+
                 return;
             }
 
-            final var path = parts[1];
+            final var pathAndQuery = parts[1];
+            final var path = pathAndQuery.split("\\?")[0]; // Extract path without query
+            final var request = new Request(pathAndQuery, path, parts[2]);
+
             if (!validPaths.contains(path)) {
                 sendNotFoundResponse(out);
                 return;
@@ -57,7 +62,7 @@ public class Server {
             final var mimeType = Files.probeContentType(filePath);
 
             if (path.equals("/classic.html")) {
-                handleClassicHtmlRequest(filePath, out, mimeType);
+                handleClassicHtmlRequest(filePath, out, mimeType, request);
             } else {
                 handleRegularRequest(filePath, out, mimeType);
             }
@@ -77,10 +82,10 @@ public class Server {
         out.flush();
     }
 
-    private static void handleClassicHtmlRequest(Path filePath, OutputStream out, String mimeType) throws IOException {
+    private static void handleClassicHtmlRequest(Path filePath, OutputStream out, String mimeType, Request request) throws IOException {
         try {
             final var template = Files.readString(filePath);
-            final var content = template.replace("{time}", LocalDateTime.now().toString()).getBytes();
+            final var content = template.replace("{time}", LocalDateTime.now().toString() + getQueryParamsString(request)).getBytes();
             sendOkResponse(out, mimeType, content.length);
             out.write(content);
             out.flush();
@@ -108,5 +113,14 @@ public class Server {
                         "Connection: close\r\n" +
                         "\r\n"
         ).getBytes());
+    }
+
+    private static String getQueryParamsString(Request request) {
+        StringBuilder queryParamsString = new StringBuilder();
+        List<NameValuePair> queryParams = request.getQueryParams();
+        for (NameValuePair param : queryParams) {
+            queryParamsString.append("&").append(param.getName()).append("=").append(param.getValue());
+        }
+        return queryParamsString.toString();
     }
 }
